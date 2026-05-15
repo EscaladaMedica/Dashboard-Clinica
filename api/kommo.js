@@ -26,31 +26,4 @@ module.exports = async function handler(req, res) {
   }
 
   const qs  = new URLSearchParams(params).toString();
-  const url = `https://${account}.kommo.com/api/v4/${endpoint}${qs ? '?' + qs : ''}`;
-
-  console.log('Chamando:', url);
-
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const text = await response.text();
-    console.log('Status Kommo:', response.status);
-    console.log('Body Kommo:', text.slice(0, 500));
-
-    if (!response.ok) {
-      return res.status(response.status).json({ error: text });
-    }
-
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
-    return res.status(200).json(JSON.parse(text));
-  } catch (err) {
-    console.error('Erro:', err.message);
-    return res.status(500).json({ error: err.message });
-  }
-};
+  const url = `https://${account}.kommo.com/api/v4/${endp
