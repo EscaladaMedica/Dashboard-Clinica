@@ -1,0 +1,72 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --brown-deep: #0e0a08;
+  --brown-dark: #15100e;
+  --brown-mid: #2a1f1a;
+  --brown-light: #3d2d25;
+  --gold-primary: #c8922a;
+  --gold-light: #fdbe59;
+  --gold-muted: #a07420;
+  --cream: #faf8f4;
+  --cream-dark: #f0ebe3;
+  --text-primary: #1a1209;
+  --text-secondary: #5c4a38;
+  --text-muted: #8c7a6a;
+  --border: rgba(200, 146, 42, 0.15);
+  --border-strong: rgba(200, 146, 42, 0.3);
+  --surface: #ffffff;
+  --surface-alt: #faf8f4;
+  --success: #3B6D11;
+  --success-bg: #EAF3DE;
+  --warning: #854F0B;
+  --warning-bg: #FAEEDA;
+  --danger: #A32D2D;
+  --danger-bg: #FCEBEB;
+  --blue: #185FA5;
+  --blue-bg: #E6F1FB;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 4px rgba(14,10,8,0.06);
+  --shadow-md: 0 2px 12px rgba(14,10,8,0.08);
+}
+
+body {
+  font-family: 'Jost', sans-serif;
+  background: var(--cream);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Playfair Display', serif;
+  font-weight: 500;
+}
+
+button {
+  font-family: 'Jost', sans-serif;
+  cursor: pointer;
+}
+
+select {
+  font-family: 'Jost', sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--cream-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
