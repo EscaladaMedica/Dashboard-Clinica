@@ -1,27 +1,7 @@
-import React from 'react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
-import { MetricCard, SectionLabel, Card, CardTitle, InfoNote } from './UI';
+import React, { useState } from 'react';
+import { SectionLabel, Card, CardTitle, InfoNote } from './UI';
 import { useLeadsByStage, useKommoSummary } from '../hooks/useKommo';
-import { fmt, GOLD } from '../data';
-
-const STAGE_ORDER = [
-  'PRIMEIRO INTERAÇÃO','CONEXÃO','DIAGNÓSTICO',
-  'FOLLOW-UP 01','FOLLOW-UP 02','AGUARDANDO PAGAMENTO',
-  'AGENDADO','CONSULTA REALIZADA',
-];
-
-function sortStages(stages) {
-  return [...stages].sort((a, b) => {
-    const ia = STAGE_ORDER.indexOf(a.name.toUpperCase());
-    const ib = STAGE_ORDER.indexOf(b.name.toUpperCase());
-    if (ia === -1 && ib === -1) return 0;
-    if (ia === -1) return 1;
-    if (ib === -1) return -1;
-    return ia - ib;
-  });
-}
+import { fmt } from '../data';
 
 function Spinner() {
   return (
@@ -33,43 +13,97 @@ function Spinner() {
   );
 }
 
-function FunnelBar({ stage, max }) {
-  const pct = max > 0 ? (stage.count / max) * 100 : 0;
+function MetricCard({ label, value, sub, highlight }) {
   return (
-    <div style={{ marginBottom:12 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4, fontSize:12 }}>
-        <span style={{ color:'#5c4a38', fontWeight:500 }}>{stage.name}</span>
-        <span style={{ color:'#8c7a6a', fontVariantNumeric:'tabular-nums' }}>
-          {stage.count} leads{stage.value > 0 ? ` · ${fmt(stage.value)}` : ''}
-        </span>
-      </div>
-      <div style={{ height:10, background:'#faf8f4', borderRadius:99, overflow:'hidden' }}>
-        <div style={{ height:'100%', width:`${pct}%`, background:'#c8922a', borderRadius:99, transition:'width 0.6s ease', minWidth: stage.count > 0 ? 4 : 0 }} />
-      </div>
+    <div style={{
+      background: '#fff',
+      border: '0.5px solid rgba(200,146,42,0.15)',
+      borderRadius: 10,
+      padding: '16px 18px',
+      borderTop: highlight ? '2px solid #c8922a' : undefined,
+    }}>
+      <div style={{ fontSize: 11, color: '#8c7a6a', marginBottom: 6, fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 600, color: '#1a1209', fontFamily: "'Playfair Display', serif", lineHeight: 1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: '#8c7a6a', marginTop: 5 }}>{sub}</div>}
     </div>
   );
 }
 
+function PipelineFunnel({ name, stages }) {
+  const withLeads = stages.filter(s => s.count > 0);
+  const total = stages.reduce((s, x) => s + x.count, 0);
+  const max = Math.max(...stages.map(s => s.count), 1);
+
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <CardTitle>{name}</CardTitle>
+        <span style={{ fontSize: 12, color: '#8c7a6a' }}>{total} leads no período</span>
+      </div>
+
+      {total === 0 ? (
+        <div style={{ fontSize: 12, color: '#8c7a6a', padding: '8px 0' }}>Nenhum lead neste pipeline no período selecionado.</div>
+      ) : (
+        <div>
+          {stages.map((stage, i) => {
+            const pct = max > 0 ? (stage.count / max) * 100 : 0;
+            const isActive = stage.count > 0;
+            return (
+              <div key={i} style={{ marginBottom: 10, opacity: isActive ? 1 : 0.4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 12 }}>
+                  <span style={{ color: isActive ? '#1a1209' : '#8c7a6a', fontWeight: isActive ? 500 : 400 }}>{stage.name}</span>
+                  <span style={{ color: '#8c7a6a', fontVariantNumeric: 'tabular-nums', fontSize: 11 }}>
+                    {stage.count > 0 ? `${stage.count} leads${stage.value > 0 ? ` · ${fmt(stage.value)}` : ''}` : '—'}
+                  </span>
+                </div>
+                <div style={{ height: 8, background: '#faf8f4', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${pct}%`,
+                    background: '#c8922a',
+                    borderRadius: 99,
+                    transition: 'width 0.6s ease',
+                    minWidth: stage.count > 0 ? 4 : 0,
+                  }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+const PIPELINE_TABS = ['Todos', 'Leads Tráfego - Wpp Thaiza', 'Funil Thaiza', 'Lead Orgânico - IG Morena', 'Webnar'];
+
 export default function TabComercial({ dateFrom, dateTo }) {
+  const [activeTab, setActiveTab] = useState('Todos');
   const { stages, loading: lS, error: eS } = useLeadsByStage(dateFrom, dateTo);
   const { summary, loading: lM, error: eM } = useKommoSummary(dateFrom, dateTo);
 
-  const sorted   = sortStages(stages);
-  const maxCount = sorted.length > 0 ? Math.max(...sorted.map(s => s.count), 1) : 1;
-  const barData  = sorted.map(s => ({ name: s.name.length > 16 ? s.name.slice(0,16)+'…' : s.name, Leads: s.count }));
   const isLoading = lS || lM;
-  const error     = eS || eM;
+  const error = eS || eM;
+
+  // Agrupa etapas por pipeline
+  const byPipeline = {};
+  stages.forEach(s => {
+    if (!byPipeline[s.pipeline]) byPipeline[s.pipeline] = [];
+    byPipeline[s.pipeline].push(s);
+  });
+
+  const pipelines = Object.keys(byPipeline);
+  const visiblePipelines = activeTab === 'Todos' ? pipelines : pipelines.filter(p => p === activeTab);
 
   return (
     <div>
       <SectionLabel>Pipeline comercial — Kommo (ao vivo)</SectionLabel>
 
       {isLoading && <Spinner />}
-
-      {error && <InfoNote>Erro ao conectar com Kommo: {error}. Verifique KOMMO_TOKEN no Vercel.</InfoNote>}
+      {error && <InfoNote>Erro ao conectar com Kommo: {error}</InfoNote>}
 
       {!isLoading && summary && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:10, marginBottom:24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 24 }}>
           <MetricCard label="Total de leads" value={summary.totalLeads} sub="no período" highlight />
           <MetricCard label="Leads ativos" value={summary.activeLeads} sub="em andamento" />
           <MetricCard label="Leads ganhos" value={summary.wonLeads} sub={summary.wonValue > 0 ? fmt(summary.wonValue) : '—'} />
@@ -78,62 +112,35 @@ export default function TabComercial({ dateFrom, dateTo }) {
         </div>
       )}
 
-      {!isLoading && sorted.length > 0 && (
+      {!isLoading && pipelines.length > 0 && (
         <>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
-            <Card>
-              <CardTitle>Leads por etapa do funil</CardTitle>
-              {sorted.map(s => <FunnelBar key={s.id} stage={s} max={maxCount} />)}
-            </Card>
-
-            <Card>
-              <CardTitle>Volume por etapa</CardTitle>
-              <ResponsiveContainer width="100%" height={Math.max(barData.length * 42 + 40, 220)}>
-                <BarChart data={barData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(200,146,42,0.08)" />
-                  <XAxis type="number" tick={{ fontSize:10, fill:'#8c7a6a' }} allowDecimals={false} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize:10, fill:'#5c4a38' }} width={120} />
-                  <Tooltip labelStyle={{ fontSize:11 }} />
-                  <Bar dataKey="Leads" fill={GOLD} radius={[0,4,4,0]} name="Leads" />
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
+          {/* Seletor de pipeline */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            {['Todos', ...pipelines].map(p => (
+              <button key={p} onClick={() => setActiveTab(p)} style={{
+                background: activeTab === p ? '#c8922a' : 'transparent',
+                border: '0.5px solid rgba(200,146,42,0.3)',
+                color: activeTab === p ? '#fff' : '#5c4a38',
+                borderRadius: 6,
+                padding: '6px 14px',
+                fontSize: 12,
+                cursor: 'pointer',
+                fontFamily: "'Jost', sans-serif",
+                fontWeight: activeTab === p ? 500 : 400,
+                transition: 'all 0.15s',
+              }}>
+                {p}
+              </button>
+            ))}
           </div>
 
-          <Card>
-            <CardTitle>Detalhamento por etapa</CardTitle>
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-                <thead>
-                  <tr>
-                    {['Etapa','Pipeline','Leads','Valor total','% do total'].map((h,i) => (
-                      <th key={i} style={{ textAlign: i > 1 ? 'right' : 'left', fontWeight:500, fontSize:11, color:'#8c7a6a', padding:'6px 10px', borderBottom:'0.5px solid rgba(200,146,42,0.15)', whiteSpace:'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((s, i) => {
-                    const total = sorted.reduce((acc, x) => acc + x.count, 0);
-                    const pct   = total > 0 ? ((s.count / total) * 100).toFixed(1) : '0.0';
-                    const border = i < sorted.length - 1 ? '0.5px solid rgba(200,146,42,0.08)' : 'none';
-                    return (
-                      <tr key={s.id} onMouseEnter={e => e.currentTarget.style.background='#faf8f4'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                        <td style={{ padding:'8px 10px', fontWeight:500, color:'#1a1209', borderBottom:border }}>{s.name}</td>
-                        <td style={{ padding:'8px 10px', color:'#8c7a6a', borderBottom:border }}>{s.pipeline}</td>
-                        <td style={{ padding:'8px 10px', textAlign:'right', fontVariantNumeric:'tabular-nums', borderBottom:border }}>{s.count}</td>
-                        <td style={{ padding:'8px 10px', textAlign:'right', fontVariantNumeric:'tabular-nums', color: s.value > 0 ? '#3B6D11' : '#8c7a6a', borderBottom:border }}>{s.value > 0 ? fmt(s.value) : '—'}</td>
-                        <td style={{ padding:'8px 10px', textAlign:'right', color:'#8c7a6a', borderBottom:border }}>{pct}%</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          {visiblePipelines.map(pipeline => (
+            <PipelineFunnel key={pipeline} name={pipeline} stages={byPipeline[pipeline]} />
+          ))}
         </>
       )}
 
-      {!isLoading && sorted.length === 0 && !error && (
+      {!isLoading && stages.length === 0 && !error && (
         <InfoNote>Nenhum lead encontrado no período selecionado.</InfoNote>
       )}
     </div>
