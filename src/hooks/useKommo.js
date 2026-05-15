@@ -23,7 +23,7 @@ export function useLeadsByStage(dateFrom, dateTo) {
 
         const leadsData = await fetchKommo('leads', {
           limit: 250,
-          'filter[created_at][from]': dateFrom,
+          'filter[created_at][from]': dateFrom, 
           'filter[created_at][to]': dateTo,
         });
         const leads = leadsData?._embedded?.leads || [];
