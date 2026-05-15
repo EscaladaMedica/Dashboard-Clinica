@@ -22,7 +22,7 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Parâmetro endpoint obrigatório.' });
   }
 
-  const ALLOWED = ['leads', 'contacts', 'account'];
+  const ALLOWED = ['leads', 'contacts', 'account', 'talks', 'chats'];
   if (!ALLOWED.some((e) => endpoint.startsWith(e))) {
     return res.status(403).json({ error: 'Endpoint não permitido.' });
   }
