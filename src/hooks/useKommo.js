@@ -18,7 +18,7 @@ export function useLeadsByStage(dateFrom, dateTo) {
       setLoading(true);
       setError(null);
       try {
-        const pipelines = await fetchKommo('pipelines', { limit: 50 });
+        const pipelines = await fetchKommo('leads/pipelines', { limit: 50 });
         const allPipelines = pipelines?._embedded?.pipelines || [];
 
         const leadsData = await fetchKommo('leads', {
