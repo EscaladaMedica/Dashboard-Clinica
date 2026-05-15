@@ -31,22 +31,24 @@ export function useLeadsByStage(dateFrom, dateTo) {
         const stageMap = {};
         allPipelines.forEach((pipe) => {
           (pipe._embedded?.statuses || []).forEach((status) => {
-            stageMap[status.id] = {
-              id: status.id,
-              name: status.name,
-              pipeline: pipe.name,
-              pipeline_id: pipe.id,
-              count: 0,
-              value: 0,
-            };
+            if (status.type !== 1) {
+              stageMap[`${pipe.id}_${status.id}`] = {
+                id: status.id,
+                name: status.name,
+                pipeline: pipe.name,
+                pipeline_id: pipe.id,
+                count: 0,
+                value: 0,
+              };
+            }
           });
         });
 
         leads.forEach((lead) => {
-          const sid = lead.status_id;
-          if (stageMap[sid]) {
-            stageMap[sid].count += 1;
-            stageMap[sid].value += lead.price || 0;
+          const key = `${lead.pipeline_id}_${lead.status_id}`;
+          if (stageMap[key]) {
+            stageMap[key].count += 1;
+            stageMap[key].value += lead.price || 0;
           }
         });
 
@@ -82,19 +84,16 @@ export function useKommoSummary(dateFrom, dateTo) {
         });
         const leads = leadsData?._embedded?.leads || [];
 
-        const won  = leads.filter(l => l.status_id === 142);
-        const lost = leads.filter(l => l.status_id === 143);
+        const won    = leads.filter(l => l.status_id === 142);
+        const lost   = leads.filter(l => l.status_id === 143);
         const active = leads.filter(l => l.status_id !== 142 && l.status_id !== 143);
-
-        const totalValue = leads.reduce((s, l) => s + (l.price || 0), 0);
-        const wonValue   = won.reduce((s, l) => s + (l.price || 0), 0);
 
         if (!cancelled) {
           setSummary({
             totalLeads:  leads.length,
-            totalValue,
+            totalValue:  leads.reduce((s, l) => s + (l.price || 0), 0),
             wonLeads:    won.length,
-            wonValue,
+            wonValue:    won.reduce((s, l) => s + (l.price || 0), 0),
             lostLeads:   lost.length,
             activeLeads: active.length,
           });
