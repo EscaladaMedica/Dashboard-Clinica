@@ -1,7 +1,4 @@
-// Vercel Function — proxy para Kommo API
-// Compatível com token de longa duração gerado pela interface do Kommo
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -14,9 +11,7 @@ export default async function handler(req, res) {
   const account = process.env.KOMMO_ACCOUNT;
 
   if (!token || !account) {
-    return res.status(500).json({
-      error: 'KOMMO_TOKEN ou KOMMO_ACCOUNT não configurados no Vercel.',
-    });
+    return res.status(500).json({ error: 'KOMMO_TOKEN ou KOMMO_ACCOUNT não configurados.' });
   }
 
   const { endpoint, ...params } = req.query;
@@ -25,15 +20,15 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Parâmetro endpoint obrigatório.' });
   }
 
-  // Whitelist de segurança
   const ALLOWED = ['leads', 'pipelines', 'contacts', 'account'];
-  const allowed = ALLOWED.some((e) => endpoint.startsWith(e));
-  if (!allowed) {
+  if (!ALLOWED.some((e) => endpoint.startsWith(e))) {
     return res.status(403).json({ error: 'Endpoint não permitido.' });
   }
 
   const qs  = new URLSearchParams(params).toString();
   const url = `https://${account}.kommo.com/api/v4/${endpoint}${qs ? '?' + qs : ''}`;
+
+  console.log('Chamando:', url);
 
   try {
     const response = await fetch(url, {
@@ -41,26 +36,21 @@ export default async function handler(req, res) {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'X-Auth-Token': token,
       },
     });
 
-    console.log(`Kommo ${endpoint} → ${response.status}`);
+    const text = await response.text();
+    console.log('Status Kommo:', response.status);
+    console.log('Body Kommo:', text.slice(0, 500));
 
     if (!response.ok) {
-      const text = await response.text();
-      console.error(`Kommo error body: ${text}`);
-      return res.status(response.status).json({
-        error: `Kommo retornou ${response.status}`,
-        detail: text,
-      });
+      return res.status(response.status).json({ error: text });
     }
 
-    const data = await response.json();
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
-    return res.status(200).json(data);
+    return res.status(200).json(JSON.parse(text));
   } catch (err) {
-    console.error(`Fetch error: ${err.message}`);
+    console.error('Erro:', err.message);
     return res.status(500).json({ error: err.message });
   }
-}
+};
