@@ -1,9 +1,4 @@
 {
   "version": 2,
-  "framework": "create-react-app",
-  "functions": {
-    "api/kommo.js": {
-      "runtime": "nodejs20.x"
-    }
-  }
+  "framework": "create-react-app"
 }
