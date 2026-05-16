@@ -14,7 +14,7 @@
   --glow-safe: 0 0 0 1px rgba(34,217,138,0.30), 0 4px 24px rgba(34,217,138,0.14);
   --glow-danger: 0 0 0 1px rgba(255,59,92,0.30), 0 4px 24px rgba(255,59,92,0.14);
   --glow-blue: 0 0 0 1px rgba(77,142,255,0.30), 0 4px 24px rgba(77,142,255,0.14);
-  --radius: 12px; --font: 'DM Sans', system-ui, sans-serif; --font-display: 'Syne', sans-serif; --font-serif: 'Playfair Display', serif;
+  --radius: 12px; --font: 'Inter', system-ui, sans-serif; --font-display: 'Inter', sans-serif; --font-serif: 'Playfair Display', serif;
 }
 
 body.light-theme {
