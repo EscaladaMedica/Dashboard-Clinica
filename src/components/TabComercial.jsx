@@ -101,9 +101,9 @@ export default function TabComercial({ dateFrom, dateTo }) {
           <div style={{ marginBottom: 28 }}>
             <SectionHead>Conversas em tempo real</SectionHead>
             <div className="stat-strip">
-              <StatCard variant="blue" icon="💬" num={summary.talksTotal.toLocaleString('pt-BR')} label="Conversas ativas" sub="total no CRM" delay={0} />
-              <StatCard variant="acc"  icon="⚡" num={summary.talksInWork.toLocaleString('pt-BR')} label="Em atendimento" sub="em andamento agora" delay={60} />
-              <StatCard variant="red"  icon="📩" num={summary.talksUnread.toLocaleString('pt-BR')} label="Não lidas" sub="aguardando resposta" delay={120} />
+              <StatCard variant="blue" icon="💬" num={(summary.talksTotal || 0).toLocaleString('pt-BR')} label="Conversas ativas" sub="total no CRM" delay={0} />
+              <StatCard variant="acc"  icon="⚡" num={(summary.talksInWork || 0).toLocaleString('pt-BR')} label="Em atendimento" sub="em andamento agora" delay={60} />
+              <StatCard variant="red"  icon="📩" num={(summary.talksUnread || 0).toLocaleString('pt-BR')} label="Não lidas" sub="aguardando resposta" delay={120} />
             </div>
           </div>
 
