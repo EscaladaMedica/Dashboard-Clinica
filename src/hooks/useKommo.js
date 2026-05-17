@@ -1,43 +1,53 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
-// Chama a Vercel Function proxy em /api/kommo
+// ─── FETCH BASE ───────────────────────────────────────────────────────────────
 async function fetchKommo(endpoint, params = {}) {
   const qs = new URLSearchParams({ endpoint, ...params }).toString();
   const res = await fetch(`/api/kommo?${qs}`);
-  if (!res.ok) throw new Error(`Kommo API error: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Kommo API error: ${res.status}${body ? ' — ' + body.slice(0,100) : ''}`);
+  }
   return res.json();
 }
 
-// ─── Hook genérico ────────────────────────────────────────────────────────────
-export function useKommo(endpoint, params = {}, deps = []) {
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const d = await fetchKommo(endpoint, params);
-      setData(d);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [endpoint, JSON.stringify(params)]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return { data, loading, error, reload: load };
+// ─── FETCH COM PAGINAÇÃO ──────────────────────────────────────────────────────
+async function fetchAllPages(endpoint, baseParams = {}, onProgress) {
+  let page = 1;
+  let all  = [];
+  while (true) {
+    const data  = await fetchKommo(endpoint, { ...baseParams, limit: 250, page });
+    const embedded = data?._embedded || {};
+    const items    = Object.values(embedded)[0] || [];
+    all = [...all, ...items];
+    if (onProgress) onProgress(page, all.length);
+    if (!data?._links?.next) break;
+    page++;
+    if (page > 20) break;
+  }
+  return all;
 }
 
-// ─── Busca pipelines + etapas ─────────────────────────────────────────────────
-export function usePipelines() {
-  return useKommo('pipelines', { limit: 50 });
+// ─── EXTRAI CAMPO CUSTOMIZADO ────────────────────────────────────────────────
+export function getCustomField(lead, fieldId) {
+  const fields = lead.custom_fields_values || [];
+  const field  = fields.find(f => f.field_id === fieldId);
+  return field?.values?.[0]?.value || null;
 }
 
-// ─── Busca leads agrupados por etapa (com filtro de data) ────────────────────
+// ─── CAMPO IDs — WEBINÁRIO ───────────────────────────────────────────────────
+export const FIELD_QUALIFICACAO   = 1024299;
+export const FIELD_O_QUE_INCOMODA = 1024301;
+export const FIELD_ESCALA         = 1024303;
+export const FIELD_RENDA          = 1024305;
+export const FIELD_UTM_CONTENT    = 518462;
+export const FIELD_UTM_CAMPAIGN   = 518466;
+
+// ─── PIPELINE IDs ─────────────────────────────────────────────────────────────
+export const PIPELINE_CLINICA  = 13109195;
+export const PIPELINE_WEBINAR  = 13634396;
+
+// ─── HOOK: LEADS POR ETAPA ───────────────────────────────────────────────────
 export function useLeadsByStage(dateFrom, dateTo) {
   const [stages, setStages]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -45,57 +55,48 @@ export function useLeadsByStage(dateFrom, dateTo) {
 
   useEffect(() => {
     let cancelled = false;
-
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        // 1. Busca todos os pipelines e etapas
-        const pipelines = await fetchKommo('pipelines', { limit: 50 });
+        const pipelines = await fetchKommo('leads/pipelines', { limit: 50 });
         const allPipelines = pipelines?._embedded?.pipelines || [];
 
-        // 2. Para cada pipeline, busca leads com filtro de data
-        const params = { limit: 250, 'filter[created_at][from]': dateFrom, 'filter[created_at][to]': dateTo };
-        const leadsData = await fetchKommo('leads', params);
-        const leads = leadsData?._embedded?.leads || [];
+        const params = { limit: 250 };
+        if (dateFrom) params['filter[created_at][from]'] = dateFrom;
+        if (dateTo)   params['filter[created_at][to]']   = dateTo;
 
-        // 3. Monta mapa: status_id → { name, pipeline_name, count, value }
+        const leadsData = await fetchKommo('leads', params);
+        const leads     = leadsData?._embedded?.leads || [];
+
         const stageMap = {};
-        allPipelines.forEach((pipe) => {
-          (pipe._embedded?.statuses || []).forEach((status) => {
-            if (status.type !== 142) { // ignora "Ganho" e "Perdido" default
-              stageMap[status.id] = {
-                id: status.id,
-                name: status.name,
-                pipeline: pipe.name,
-                pipeline_id: pipe.id,
-                color: status.color || '#888',
-                count: 0,
-                value: 0,
+        allPipelines.forEach(pipe => {
+          (pipe._embedded?.statuses || []).forEach(status => {
+            if (status.type !== 1) {
+              stageMap[`${pipe.id}_${status.id}`] = {
+                id: status.id, name: status.name,
+                pipeline: pipe.name, pipeline_id: pipe.id,
+                count: 0, value: 0,
               };
             }
           });
         });
 
-        // 4. Conta leads por etapa
-        leads.forEach((lead) => {
-          const sid = lead.status_id;
-          if (stageMap[sid]) {
-            stageMap[sid].count += 1;
-            stageMap[sid].value += lead.price || 0;
+        leads.forEach(lead => {
+          const key = `${lead.pipeline_id}_${lead.status_id}`;
+          if (stageMap[key]) {
+            stageMap[key].count += 1;
+            stageMap[key].value += lead.price || 0;
           }
         });
 
-        if (!cancelled) {
-          setStages(Object.values(stageMap));
-        }
+        if (!cancelled) setStages(Object.values(stageMap));
       } catch (e) {
         if (!cancelled) setError(e.message);
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
-
     load();
     return () => { cancelled = true; };
   }, [dateFrom, dateTo]);
@@ -103,47 +104,65 @@ export function useLeadsByStage(dateFrom, dateTo) {
   return { stages, loading, error };
 }
 
-// ─── Busca métricas gerais (conversas, leads ganhos/perdidos) ────────────────
+// ─── HOOK: RESUMO GERAL ───────────────────────────────────────────────────────
 export function useKommoSummary(dateFrom, dateTo) {
-  const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+  const [summary, setSummary]     = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+  const [talkProgress, setProgress] = useState(null);
+  const [talksLimited, setTalksLimited] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-
     async function load() {
       setLoading(true);
       setError(null);
+      setProgress(null);
+      setTalksLimited(false);
+
       try {
-        const params = {
-          limit: 250,
-          'filter[created_at][from]': dateFrom,
-          'filter[created_at][to]': dateTo,
-        };
+        const leadParams = { limit: 250 };
+        if (dateFrom) leadParams['filter[created_at][from]'] = dateFrom;
+        if (dateTo)   leadParams['filter[created_at][to]']   = dateTo;
 
-        const [leadsData, wonData, lostData] = await Promise.all([
-          fetchKommo('leads', params),
-          fetchKommo('leads', { ...params, 'filter[statuses][0][status_id]': 142 }),
-          fetchKommo('leads', { ...params, 'filter[statuses][0][status_id]': 143 }),
-        ]);
+        // Busca leads com filtro de data
+        const leadsData = await fetchKommo('leads', leadParams);
+        const leads     = leadsData?._embedded?.leads || [];
 
-        const leads = leadsData?._embedded?.leads || [];
-        const won   = wonData?._embedded?.leads   || [];
-        const lost  = lostData?._embedded?.leads  || [];
+        // Status 142 = ganho, 143 = perdido (padrão Kommo)
+        const won    = leads.filter(l => l.status_id === 142);
+        const lost   = leads.filter(l => l.status_id === 143);
+        const active = leads.filter(l => l.status_id !== 142 && l.status_id !== 143);
 
-        const totalValue    = leads.reduce((s, l) => s + (l.price || 0), 0);
-        const wonValue      = won.reduce((s, l) => s + (l.price || 0), 0);
+        // Talks — sem filtro de data (limitação da API)
+        let talksTotal = 0, talksInWork = 0, talksUnread = 0;
+        let talksErr = null;
+        try {
+          const talks = await fetchAllPages('talks', {}, (page, count) => {
+            if (!cancelled) setProgress({ page, count });
+          });
+          talksTotal  = talks.length;
+          talksInWork = talks.filter(t => t.is_in_work).length;
+          talksUnread = talks.filter(t => !t.is_read).length;
+          setTalksLimited(true); // talks sempre sem filtro de data
+        } catch (e) {
+          talksErr = e.message;
+        }
 
         if (!cancelled) {
           setSummary({
-            totalLeads:  leads.length,
-            totalValue,
-            wonLeads:    won.length,
-            wonValue,
-            lostLeads:   lost.length,
-            activeLeads: leads.length - won.length - lost.length,
+            totalLeads:   leads.length,
+            totalValue:   leads.reduce((s, l) => s + (l.price || 0), 0),
+            wonLeads:     won.length,
+            wonValue:     won.reduce((s, l) => s + (l.price || 0), 0),
+            lostLeads:    lost.length,
+            activeLeads:  active.length,
+            talksTotal,
+            talksInWork,
+            talksUnread,
+            talksErr,
           });
+          setProgress(null);
         }
       } catch (e) {
         if (!cancelled) setError(e.message);
@@ -151,10 +170,59 @@ export function useKommoSummary(dateFrom, dateTo) {
         if (!cancelled) setLoading(false);
       }
     }
-
     load();
     return () => { cancelled = true; };
   }, [dateFrom, dateTo]);
 
-  return { summary, loading, error };
+  return { summary, loading, error, talkProgress, talksLimited };
+}
+
+// ─── HOOK: LEADS DO WEBINÁRIO COM QUALIFICAÇÃO ───────────────────────────────
+export function useWebinarLeads(dateFrom, dateTo) {
+  const [leads, setLeads]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]   = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = {
+          limit: 250,
+          'filter[pipeline_id]': PIPELINE_WEBINAR,
+        };
+        if (dateFrom) params['filter[created_at][from]'] = dateFrom;
+        if (dateTo)   params['filter[created_at][to]']   = dateTo;
+
+        const data  = await fetchKommo('leads', params);
+        const items = data?._embedded?.leads || [];
+
+        const parsed = items.map(lead => ({
+          id:          lead.id,
+          name:        lead.name,
+          status_id:   lead.status_id,
+          created_at:  lead.created_at,
+          price:        lead.price || 0,
+          qualificacao: getCustomField(lead, FIELD_QUALIFICACAO),
+          o_que_incomoda: getCustomField(lead, FIELD_O_QUE_INCOMODA),
+          escala:       getCustomField(lead, FIELD_ESCALA),
+          renda:        getCustomField(lead, FIELD_RENDA),
+          utm_content:  getCustomField(lead, FIELD_UTM_CONTENT),
+          utm_campaign: getCustomField(lead, FIELD_UTM_CAMPAIGN),
+        }));
+
+        if (!cancelled) setLeads(parsed);
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [dateFrom, dateTo]);
+
+  return { leads, loading, error };
 }
