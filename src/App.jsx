@@ -75,9 +75,9 @@ export default function App() {
       </header>
 
       <main className="main-content">
-        {tab === 'clinica'   && <TabClinica   period={period} />}
+        {tab === 'clinica'   && <TabClinica   startDate={startDate} endDate={endDate} />}
         {tab === 'comercial' && <TabComercial dateFrom={dateFrom} dateTo={dateTo} />}
-        {tab === 'webinar'   && <TabWebinar   period={period} />}
+        {tab === 'webinar'   && <TabWebinar   startDate={startDate} endDate={endDate} />}
       </main>
 
       <footer style={{ textAlign:'center', padding:16, fontSize:10, color:'var(--text-3)', borderTop:'1px solid var(--border)' }}>
