@@ -57,14 +57,13 @@ function isQualificado(lead) {
 function rendaFaixa(str) {
   const val = parseRendaNum(str);
   if (val <= 0)     return 'Não informado';
-  if (val <= 3000)  return 'Até R$ 3k';
-  if (val <= 5000)  return 'R$ 3k–5k';
+  if (val <= 5000)  return 'Até R$ 5k';
   if (val <= 10000) return 'R$ 5k–10k';
   if (val <= 20000) return 'R$ 10k–20k';
   return 'Acima R$ 20k';
 }
 
-const FAIXA_ORDER = ['Até R$ 3k','R$ 3k–5k','R$ 5k–10k','R$ 10k–20k','Acima R$ 20k','Não informado'];
+const FAIXA_ORDER = ['Até R$ 5k','R$ 5k–10k','R$ 10k–20k','Acima R$ 20k','Não informado'];
 
 function SectionHead({ children }) {
   return (
