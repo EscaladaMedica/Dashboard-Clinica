@@ -98,11 +98,22 @@ export default function TabClinica({ startDate, endDate }) {
     [rawData, startDate, endDate]
   );
 
-  // Leads do Tintim filtrados por período
-  const tintimFiltrado = useMemo(
-    () => filterByDateRange(rawTintim, startDate, endDate),
-    [rawTintim, startDate, endDate]
-  );
+  // Leads do Tintim — filtra por data apenas quando o row tem campo day preenchido.
+  // Rows sem day (planilha sem coluna de data) são sempre incluídos.
+  const tintimFiltrado = useMemo(() => {
+    if (!startDate && !endDate) return rawTintim;
+    return rawTintim.filter(r => {
+      if (!r.day) return true; // sem data na planilha → inclui sempre
+      const rowDate = new Date(r.day + 'T00:00:00');
+      if (startDate && rowDate < startDate) return false;
+      if (endDate) {
+        const endDay = new Date(endDate);
+        endDay.setHours(23, 59, 59, 999);
+        if (rowDate > endDay) return false;
+      }
+      return true;
+    });
+  }, [rawTintim, startDate, endDate]);
 
   // ── Métricas de tráfego ──
   const totalSpent = useMemo(() => data.reduce((s, d) => s + d.spent, 0), [data]);
