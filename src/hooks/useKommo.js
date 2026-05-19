@@ -180,11 +180,13 @@ export function useKommoSummary(dateFrom, dateTo) {
 // ─── EXTRAI DDD DE UM NÚMERO BRASILEIRO ──────────────────────────────────────
 function extractDDD(phone) {
   if (!phone) return null;
-  const clean = phone.replace(/\D/g, '');
-  // Com DDI 55: 55 + DDD(2) + número(8-9) = 12-13 dígitos
-  if (clean.length >= 12 && clean.startsWith('55')) return clean.slice(2, 4);
-  // Sem DDI: DDD(2) + número(8-9) = 10-11 dígitos
-  if (clean.length >= 10 && clean.length <= 11) return clean.slice(0, 2);
+  let digits = phone.replace(/\D/g, '');
+  // Remove DDI 55 (Brasil): 5511999... → 11999...
+  if (digits.startsWith('55') && digits.length >= 12) digits = digits.slice(2);
+  // Remove prefixo 0 antigo: 011999... → 11999...
+  if (digits.startsWith('0') && digits.length >= 11) digits = digits.slice(1);
+  // Número brasileiro: DDD(2) + local(8-9) = 10 ou 11 dígitos
+  if (digits.length >= 10 && digits.length <= 11) return digits.slice(0, 2);
   return null;
 }
 
@@ -217,18 +219,23 @@ export function useWebinarLeads(dateFrom, dateTo) {
         )].slice(0, 100);
 
         // Busca contatos em lote para obter telefones (e assim DDD)
+        // Usa URLSearchParams.append para gerar filter[id][]= repetido (formato aceito pelo Kommo)
         const contactPhones = {};
         if (contactIds.length > 0) {
           try {
-            const contactParams = { limit: 250 };
-            contactIds.forEach((id, i) => { contactParams[`filter[id][${i}]`] = id; });
-            const contactData = await fetchKommo('contacts', contactParams);
-            (contactData?._embedded?.contacts || []).forEach(contact => {
-              const phoneField = (contact.custom_fields_values || [])
-                .find(f => f.field_code === 'PHONE');
-              const phone = phoneField?.values?.[0]?.value;
-              if (phone) contactPhones[contact.id] = phone;
-            });
+            const contactQs = new URLSearchParams({ endpoint: 'contacts', limit: 250 });
+            contactIds.forEach(id => contactQs.append('filter[id][]', id));
+            const cRes = await fetch(`/api/kommo?${contactQs.toString()}`);
+            if (cRes.ok) {
+              const contactData = await cRes.json();
+              (contactData?._embedded?.contacts || []).forEach(contact => {
+                // Tenta field_code PHONE primeiro, depois qualquer campo multitext (telefone)
+                const phoneField = (contact.custom_fields_values || [])
+                  .find(f => f.field_code === 'PHONE' || f.field_type === 'multitext');
+                const phone = phoneField?.values?.[0]?.value;
+                if (phone) contactPhones[contact.id] = phone;
+              });
+            }
           } catch (_) { /* DDD indisponível, não bloqueia */ }
         }
 
