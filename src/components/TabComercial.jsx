@@ -147,19 +147,20 @@ export default function TabComercial({ dateFrom, dateTo }) {
 
       {!isLoading && summary && (
         <>
-          {/* Conversas */}
-          <div style={{ marginBottom: 28 }}>
-            <SectionHead>Conversas em tempo real</SectionHead>
-            <LimitationNote>
-              A API do Kommo não suporta filtro de data para conversas. Os números abaixo refletem o estado atual do CRM independente do período selecionado.
-              {summary.talksErr && ` Erro ao carregar: ${summary.talksErr}`}
-            </LimitationNote>
-            <div className="stat-strip">
-              <StatCard variant="blue" icon="💬" num={(summary.talksTotal  || 0).toLocaleString('pt-BR')} label="Conversas ativas"  sub="total atual no CRM"     delay={0}   limited />
-              <StatCard variant="acc"  icon="⚡" num={(summary.talksInWork || 0).toLocaleString('pt-BR')} label="Em atendimento"   sub="em andamento agora"     delay={60}  limited />
-              <StatCard variant="red"  icon="📩" num={(summary.talksUnread || 0).toLocaleString('pt-BR')} label="Não lidas"        sub="aguardando resposta"    delay={120} limited />
+          {/* Conversas — só exibe se o endpoint estiver acessível */}
+          {!summary.talksErr && (
+            <div style={{ marginBottom: 28 }}>
+              <SectionHead>Conversas em tempo real</SectionHead>
+              <LimitationNote>
+                A API do Kommo não suporta filtro de data para conversas. Os números abaixo refletem o estado atual do CRM independente do período selecionado.
+              </LimitationNote>
+              <div className="stat-strip">
+                <StatCard variant="blue" icon="💬" num={(summary.talksTotal  || 0).toLocaleString('pt-BR')} label="Conversas ativas"  sub="total atual no CRM"     delay={0}   limited />
+                <StatCard variant="acc"  icon="⚡" num={(summary.talksInWork || 0).toLocaleString('pt-BR')} label="Em atendimento"   sub="em andamento agora"     delay={60}  limited />
+                <StatCard variant="red"  icon="📩" num={(summary.talksUnread || 0).toLocaleString('pt-BR')} label="Não lidas"        sub="aguardando resposta"    delay={120} limited />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Leads */}
           <div style={{ marginBottom: 28 }}>
