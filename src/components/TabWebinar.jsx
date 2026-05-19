@@ -40,21 +40,35 @@ function formatRenda(str) {
 
 function parseRendaNum(str) {
   if (!str) return 0;
-  // Remove tudo exceto dígitos, vírgula e ponto
-  // Trata separador de milhar (ponto) e decimal (vírgula)
-  // Ex: "R$ 5.000" → 5000 | "R$ 5.500,00" → 5500
   let clean = str.replace(/[^\d.,]/g, '');
-  // Se tem ponto seguido de 3 dígitos = separador de milhar
   clean = clean.replace(/\.(\d{3})/g, '$1');
-  // Vírgula como decimal
   clean = clean.replace(',', '.');
   const n = parseFloat(clean);
   return isNaN(n) ? 0 : n;
 }
 
+// Retorna um valor numérico representativo para a string de renda.
+// Suporta valores únicos ("R$ 7.000") e faixas ("R$ 5.000 a R$ 10.000").
+function getRendaValue(str) {
+  if (!str) return 0;
+  // "acima de", "mais de" → acima de 20k
+  if (/acima|mais\s*de|superior/i.test(str)) return 25000;
+  // Remove prefixo R$ e separadores de milhar para extrair números
+  const cleaned = str.toLowerCase()
+    .replace(/r\$\s*/g, '')
+    .replace(/\.(\d{3})/g, '$1');
+  const nums = (cleaned.match(/\d+(?:[.,]\d+)?/g) || [])
+    .map(n => parseFloat(n.replace(',', '.')))
+    .filter(n => !isNaN(n) && n > 0);
+  if (nums.length === 0) return 0;
+  if (nums.length === 1) return nums[0];
+  // Faixa: usa o ponto médio para classificação
+  return (nums[0] + nums[1]) / 2;
+}
+
 // R$ 5.000 ou menos = desqualificado por renda
 function isDesqualificadoPorRenda(rendaStr) {
-  const val = parseRendaNum(rendaStr);
+  const val = getRendaValue(rendaStr);
   return val > 0 && val <= 5000;
 }
 
@@ -66,11 +80,13 @@ function isDesqualificado(lead) {
 }
 
 function isQualificado(lead) {
-  return lead.qualificacao === 'Qualificado' && !isDesqualificadoPorRenda(lead.renda);
+  return lead.qualificacao === 'Qualificado'
+    && !!lead.renda                        // renda obrigatória para ser qualificado
+    && !isDesqualificadoPorRenda(lead.renda);
 }
 
 function rendaFaixa(str) {
-  const val = parseRendaNum(str);
+  const val = getRendaValue(str);
   if (val <= 0)     return 'Não informado';
   if (val <= 5000)  return 'Até R$ 5k';
   if (val <= 10000) return 'R$ 5k–10k';
@@ -79,6 +95,23 @@ function rendaFaixa(str) {
 }
 
 const FAIXA_ORDER = ['Até R$ 5k','R$ 5k–10k','R$ 10k–20k','Acima R$ 20k','Não informado'];
+
+const DDD_ESTADO = {
+  '11':'SP','12':'SP','13':'SP','14':'SP','15':'SP','16':'SP','17':'SP','18':'SP','19':'SP',
+  '21':'RJ','22':'RJ','24':'RJ',
+  '27':'ES','28':'ES',
+  '31':'MG','32':'MG','33':'MG','34':'MG','35':'MG','37':'MG','38':'MG',
+  '41':'PR','42':'PR','43':'PR','44':'PR','45':'PR','46':'PR',
+  '47':'SC','48':'SC','49':'SC',
+  '51':'RS','53':'RS','54':'RS','55':'RS',
+  '61':'DF','62':'GO','63':'TO','64':'GO',
+  '65':'MT','66':'MT','67':'MS','68':'AC','69':'RO',
+  '71':'BA','73':'BA','74':'BA','75':'BA','77':'BA',
+  '79':'SE','81':'PE','82':'AL','83':'PB','84':'RN',
+  '85':'CE','86':'PI','87':'PE','88':'CE','89':'PI',
+  '91':'PA','92':'AM','93':'PA','94':'PA',
+  '95':'RR','96':'AP','97':'AM','98':'MA','99':'MA',
+};
 
 // ─── COMPONENTES ──────────────────────────────────────────────────────────────
 function SectionHead({ children }) {
@@ -228,7 +261,17 @@ export default function TabWebinar({ startDate, endDate, dateFrom, dateTo }) {
       .slice(0, 8)
       .map(([name, count]) => ({ name, count }));
 
-    return { total, qualificados, desqualif, cpl, rendaData, escalaData, topIncomodos, adsQualificados };
+    // DDD dos inscritos
+    const dddMap = {};
+    kommoLeads.forEach(l => {
+      if (l.ddd) dddMap[l.ddd] = (dddMap[l.ddd] || 0) + 1;
+    });
+    const dddData = Object.entries(dddMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([ddd, count]) => ({ ddd, count, estado: DDD_ESTADO[ddd] || '?' }));
+
+    return { total, qualificados, desqualif, cpl, rendaData, escalaData, topIncomodos, adsQualificados, dddData };
   }, [kommoLeads, totalSpent]);
 
   // Filtro de qualificação na tabela
@@ -313,6 +356,37 @@ export default function TabWebinar({ startDate, endDate, dateFrom, dateTo }) {
               </div>
             )}
           </div>
+
+          {qualStats.dddData.length > 0 && (
+            <div className="chart-card" style={{ marginBottom: 12 }}>
+              <div className="chart-title">DDD dos inscritos</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '6px 16px' }}>
+                {qualStats.dddData.map((item, i) => {
+                  const maxCount = qualStats.dddData[0].count;
+                  const pct = (item.count / maxCount) * 100;
+                  return (
+                    <div key={i}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 12 }}>
+                        <span style={{ color: 'var(--text)', fontWeight: 600 }}>
+                          ({item.ddd})
+                          <span style={{ color: 'var(--text-3)', fontWeight: 400, marginLeft: 6 }}>{item.estado}</span>
+                        </span>
+                        <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{item.count}</span>
+                      </div>
+                      <div className="stage-track">
+                        <div className="stage-fill" style={{ width: `${pct}%`, minWidth: 4, background: 'var(--blue)' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {kommoLeads.filter(l => !l.ddd).length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-3)' }}>
+                  {kommoLeads.filter(l => !l.ddd).length} inscritos sem telefone registrado no Kommo
+                </div>
+              )}
+            </div>
+          )}
 
           {qualStats.topIncomodos.length > 0 && (
             <div className="chart-card" style={{ marginBottom: 12 }}>
