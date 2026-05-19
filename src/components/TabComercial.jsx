@@ -85,13 +85,30 @@ function PipelineCard({ name, stages }) {
             return (
               <div key={i} className={`stage-row${active ? '' : ' dim'}`}>
                 <div className="stage-meta">
-                  <span className="stage-name">{stage.name}</span>
+                  <span className="stage-name">
+                    {stage.name}
+                    {stage.isConversion && (
+                      <span style={{
+                        marginLeft: 6, fontSize: 9, fontWeight: 700,
+                        background: 'rgba(34,217,138,0.15)', color: 'var(--green)',
+                        border: '1px solid rgba(34,217,138,0.35)',
+                        borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle',
+                      }}>CONVERSÃO</span>
+                    )}
+                  </span>
                   <span className="stage-val">
                     {active ? `${stage.count}${stage.value > 0 ? ` · ${fmt(stage.value)}` : ''}` : '—'}
                   </span>
                 </div>
                 <div className="stage-track">
-                  <div className="stage-fill" style={{ width: `${pct}%`, minWidth: active ? 4 : 0 }} />
+                  <div
+                    className="stage-fill"
+                    style={{
+                      width: `${pct}%`,
+                      minWidth: active ? 4 : 0,
+                      ...(stage.isConversion ? { background: 'var(--green)' } : {}),
+                    }}
+                  />
                 </div>
               </div>
             );
