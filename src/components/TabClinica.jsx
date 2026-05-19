@@ -5,8 +5,19 @@ import {
 } from 'recharts';
 import {
   fetchSheetData, normalizeRow, isClinica, filterByDateRange,
-  fmt, fmtDay, CHART_COLORS, DDD_MOCK,
+  fetchTintimData, DDD_ESTADO,
+  fmt, fmtDay, CHART_COLORS,
 } from '../data';
+
+const TT_STYLE = {
+  backgroundColor: 'var(--s2)',
+  border: '1px solid var(--border2)',
+  borderRadius: 8,
+  fontSize: 11,
+  color: 'var(--text)',
+};
+
+const PER_PAGE = 10;
 
 function SectionHead({ children }) {
   return (
@@ -29,34 +40,71 @@ function StatCard({ variant, icon, num, label, sub, delay = 0 }) {
   );
 }
 
-const TT_STYLE = {
-  backgroundColor: 'var(--s2)',
-  border: '1px solid var(--border2)',
-  borderRadius: 8,
-  fontSize: 11,
-  color: 'var(--text)',
-};
+function Pagination({ page, total, perPage, onChange }) {
+  const pages = Math.ceil(total / perPage);
+  if (pages <= 1) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
+      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+        {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} de {total}
+      </span>
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page === 1}
+        style={{ background: 'var(--s2)', border: '1px solid var(--border)', color: page === 1 ? 'var(--text-3)' : 'var(--text)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: page === 1 ? 'default' : 'pointer', fontFamily: 'var(--font)' }}
+      >‹</button>
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page === pages}
+        style={{ background: 'var(--s2)', border: '1px solid var(--border)', color: page === pages ? 'var(--text-3)' : 'var(--text)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: page === pages ? 'default' : 'pointer', fontFamily: 'var(--font)' }}
+      >›</button>
+    </div>
+  );
+}
 
 export default function TabClinica({ startDate, endDate }) {
-  const [rawData, setRawData]   = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [rawData, setRawData]       = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
 
+  const [rawTintim, setRawTintim]   = useState([]);
+  const [loadingDDD, setLoadingDDD] = useState(true);
+  const [errorDDD, setErrorDDD]     = useState(null);
+
+  const [perfPage, setPerfPage]     = useState(1);
+
+  // Busca dados de tráfego (Meta Ads)
   useEffect(() => {
     setLoading(true);
     fetchSheetData()
       .then(rows => {
-        const normalized = rows.map(normalizeRow).filter(r => isClinica(r.camp) && r.spent > 0);
-        setRawData(normalized);
+        setRawData(rows.map(normalizeRow).filter(r => isClinica(r.camp) && r.spent > 0));
         setLoading(false);
       })
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
-  const data = useMemo(() => {
-    return filterByDateRange(rawData, startDate, endDate);
-  }, [rawData, startDate, endDate]);
+  // Busca leads do Tintim (origem dos DDD)
+  useEffect(() => {
+    setLoadingDDD(true);
+    fetchTintimData()
+      .then(rows => { setRawTintim(rows); setLoadingDDD(false); })
+      .catch(e => { setErrorDDD(e.message); setLoadingDDD(false); });
+  }, []);
 
+  // Dados de tráfego filtrados por período
+  const data = useMemo(
+    () => filterByDateRange(rawData, startDate, endDate),
+    [rawData, startDate, endDate]
+  );
+
+  // Leads do Tintim filtrados por período
+  const tintimFiltrado = useMemo(
+    () => filterByDateRange(rawTintim, startDate, endDate),
+    [rawTintim, startDate, endDate]
+  );
+
+  // ── Métricas de tráfego ──
   const totalSpent = useMemo(() => data.reduce((s, d) => s + d.spent, 0), [data]);
   const totalMsg   = useMemo(() => data.reduce((s, d) => s + d.msg, 0), [data]);
   const avgCpm     = useMemo(() => data.length ? data.reduce((s, d) => s + d.cpm, 0) / data.length : 0, [data]);
@@ -68,8 +116,8 @@ export default function TabClinica({ startDate, endDate }) {
     const rows = data.filter(d => d.day === day);
     return {
       label: fmtDay(day),
-      gasto: +rows.reduce((s, d) => s + d.spent, 0).toFixed(2),
-      conversas: rows.reduce((s, d) => s + d.msg, 0),
+      gasto:     +rows.reduce((s, d) => s + d.spent, 0).toFixed(2),
+      conversas:  rows.reduce((s, d) => s + d.msg,   0),
     };
   }), [days, data]);
 
@@ -84,7 +132,8 @@ export default function TabClinica({ startDate, endDate }) {
     return Object.values(map).sort((a, b) => b.msg - a.msg || b.spent - a.spent);
   }, [data]);
 
-  const maxMsg = Math.max(...grouped.map(r => r.msg), 1);
+  const maxMsg       = Math.max(...grouped.map(r => r.msg), 1);
+  const perfPageData = grouped.slice((perfPage - 1) * PER_PAGE, perfPage * PER_PAGE);
 
   const campPie = useMemo(() => {
     const map = {};
@@ -97,6 +146,17 @@ export default function TabClinica({ startDate, endDate }) {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
   }, [data]);
+
+  // ── DDD dos leads (Tintim) ──
+  const dddData = useMemo(() => {
+    const map = {};
+    tintimFiltrado.forEach(r => {
+      if (!r.ddd) return;
+      if (!map[r.ddd]) map[r.ddd] = { ddd: r.ddd, estado: r.estado || DDD_ESTADO[r.ddd] || '?', count: 0 };
+      map[r.ddd].count++;
+    });
+    return Object.values(map).sort((a, b) => b.count - a.count);
+  }, [tintimFiltrado]);
 
   if (loading) {
     return (
@@ -155,6 +215,7 @@ export default function TabClinica({ startDate, endDate }) {
         </div>
       </div>
 
+      {/* ── Tabela de performance com paginação ── */}
       <div className="tbl-wrap" style={{ marginBottom: 12 }}>
         <div style={{ padding: '10px 14px', background: 'var(--s2)', borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--text-2)' }}>
@@ -175,9 +236,9 @@ export default function TabClinica({ startDate, endDate }) {
               </tr>
             </thead>
             <tbody>
-              {grouped.map((r, i) => {
-                const cpc = r.msg > 0 ? r.spent / r.msg : null;
-                const eff = r.msg / maxMsg;
+              {perfPageData.map((r, i) => {
+                const cpc      = r.msg > 0 ? r.spent / r.msg : null;
+                const eff      = r.msg / maxMsg;
                 const effClass = eff > 0.6 ? 'badge-green' : eff > 0.2 ? 'badge-amber' : 'badge-red';
                 const effLabel = eff > 0.6 ? 'alto' : eff > 0.2 ? 'médio' : 'baixo';
                 return (
@@ -195,13 +256,39 @@ export default function TabClinica({ startDate, endDate }) {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={perfPage}
+          total={grouped.length}
+          perPage={PER_PAGE}
+          onChange={p => { setPerfPage(p); }}
+        />
       </div>
 
+      {/* ── DDD + pizza de campanhas ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="chart-card">
-          <div className="chart-title">Origem dos leads por DDD <span style={{ color: 'var(--warn)', fontSize: 9, fontWeight: 600 }}>MOCK — aguardando Tintim</span></div>
-          {DDD_MOCK.map((d, i) => {
-            const max = DDD_MOCK[0].count;
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div className="chart-title" style={{ margin: 0 }}>Origem dos leads por DDD</div>
+            {!loadingDDD && (
+              <span style={{ fontSize: 10, color: 'var(--text-3)' }}>
+                {tintimFiltrado.length} leads com nome
+              </span>
+            )}
+          </div>
+
+          {loadingDDD && (
+            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 0' }}>Carregando...</div>
+          )}
+          {errorDDD && (
+            <div style={{ fontSize: 11, color: 'var(--red)', padding: '8px 0' }}>Erro: {errorDDD}</div>
+          )}
+          {!loadingDDD && !errorDDD && dddData.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 0' }}>
+              Nenhum lead com nome encontrado no período.
+            </div>
+          )}
+          {!loadingDDD && dddData.map((d, i) => {
+            const max = dddData[0].count;
             return (
               <div key={i} className="ddd-row">
                 <span className="ddd-code">{d.ddd}</span>
