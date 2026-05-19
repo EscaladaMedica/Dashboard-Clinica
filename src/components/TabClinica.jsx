@@ -6,8 +6,16 @@ import {
 import {
   fetchSheetData, normalizeRow, isClinica, filterByDateRange,
   fetchTintimData, DDD_ESTADO,
-  fmt, fmtDay, CHART_COLORS,
+  fmt, fmtDay, CHART_COLORS, GOLD, BLUE,
 } from '../data';
+
+// Amarelo = Campanha de Lead  |  Azul = Distribuição de Conteúdo (Tráfego)
+function campColor(name, fallbackIndex) {
+  const n = name.toLowerCase();
+  if (n.includes('lead'))                              return GOLD;
+  if (n.includes('tráfego') || n.includes('trafego')) return BLUE;
+  return CHART_COLORS[fallbackIndex % CHART_COLORS.length];
+}
 
 const TT_STYLE = {
   backgroundColor: 'var(--s2)',
@@ -319,7 +327,7 @@ export default function TabClinica({ startDate, endDate }) {
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={campPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} paddingAngle={2}>
-                  {campPie.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                  {campPie.map((entry, i) => <Cell key={i} fill={campColor(entry.name, i)} />)}
                 </Pie>
                 <Tooltip contentStyle={TT_STYLE} formatter={v => [`${v} conversas`]} />
                 <Legend iconSize={10} wrapperStyle={{ fontSize: 10, color: 'var(--text-2)' }} />
