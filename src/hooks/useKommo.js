@@ -177,6 +177,17 @@ export function useKommoSummary(dateFrom, dateTo) {
   return { summary, loading, error, talkProgress, talksLimited };
 }
 
+// ─── EXTRAI DDD DE UM NÚMERO BRASILEIRO ──────────────────────────────────────
+function extractDDD(phone) {
+  if (!phone) return null;
+  const clean = phone.replace(/\D/g, '');
+  // Com DDI 55: 55 + DDD(2) + número(8-9) = 12-13 dígitos
+  if (clean.length >= 12 && clean.startsWith('55')) return clean.slice(2, 4);
+  // Sem DDI: DDD(2) + número(8-9) = 10-11 dígitos
+  if (clean.length >= 10 && clean.length <= 11) return clean.slice(0, 2);
+  return null;
+}
+
 // ─── HOOK: LEADS DO WEBINÁRIO COM QUALIFICAÇÃO ───────────────────────────────
 export function useWebinarLeads(dateFrom, dateTo) {
   const [leads, setLeads]   = useState([]);
@@ -192,6 +203,7 @@ export function useWebinarLeads(dateFrom, dateTo) {
         const params = {
           limit: 250,
           'filter[pipeline_id]': PIPELINE_WEBINAR,
+          'with': 'contacts',
         };
         if (dateFrom) params['filter[created_at][from]'] = dateFrom;
         if (dateTo)   params['filter[created_at][to]']   = dateTo;
@@ -199,19 +211,47 @@ export function useWebinarLeads(dateFrom, dateTo) {
         const data  = await fetchKommo('leads', params);
         const items = data?._embedded?.leads || [];
 
-        const parsed = items.map(lead => ({
-          id:          lead.id,
-          name:        lead.name,
-          status_id:   lead.status_id,
-          created_at:  lead.created_at,
-          price:        lead.price || 0,
-          qualificacao: getCustomField(lead, FIELD_QUALIFICACAO),
-          o_que_incomoda: getCustomField(lead, FIELD_O_QUE_INCOMODA),
-          escala:       getCustomField(lead, FIELD_ESCALA),
-          renda:        getCustomField(lead, FIELD_RENDA),
-          utm_content:  getCustomField(lead, FIELD_UTM_CONTENT),
-          utm_campaign: getCustomField(lead, FIELD_UTM_CAMPAIGN),
-        }));
+        // Coleta IDs únicos de contatos vinculados aos leads
+        const contactIds = [...new Set(
+          items.flatMap(lead => (lead._embedded?.contacts || []).map(c => c.id))
+        )].slice(0, 100);
+
+        // Busca contatos em lote para obter telefones (e assim DDD)
+        const contactPhones = {};
+        if (contactIds.length > 0) {
+          try {
+            const contactParams = { limit: 250 };
+            contactIds.forEach((id, i) => { contactParams[`filter[id][${i}]`] = id; });
+            const contactData = await fetchKommo('contacts', contactParams);
+            (contactData?._embedded?.contacts || []).forEach(contact => {
+              const phoneField = (contact.custom_fields_values || [])
+                .find(f => f.field_code === 'PHONE');
+              const phone = phoneField?.values?.[0]?.value;
+              if (phone) contactPhones[contact.id] = phone;
+            });
+          } catch (_) { /* DDD indisponível, não bloqueia */ }
+        }
+
+        const parsed = items.map(lead => {
+          const mainContact = (lead._embedded?.contacts || []).find(c => c.is_main)
+            || (lead._embedded?.contacts || [])[0];
+          const phone = mainContact ? (contactPhones[mainContact.id] || null) : null;
+          return {
+            id:             lead.id,
+            name:           lead.name,
+            status_id:      lead.status_id,
+            created_at:     lead.created_at,
+            price:          lead.price || 0,
+            qualificacao:   getCustomField(lead, FIELD_QUALIFICACAO),
+            o_que_incomoda: getCustomField(lead, FIELD_O_QUE_INCOMODA),
+            escala:         getCustomField(lead, FIELD_ESCALA),
+            renda:          getCustomField(lead, FIELD_RENDA),
+            utm_content:    getCustomField(lead, FIELD_UTM_CONTENT),
+            utm_campaign:   getCustomField(lead, FIELD_UTM_CAMPAIGN),
+            phone,
+            ddd:            extractDDD(phone),
+          };
+        });
 
         if (!cancelled) setLeads(parsed);
       } catch (e) {
