@@ -143,14 +143,73 @@ export const GREEN        = '#22D98A';
 export const RED          = '#FF3B5C';
 export const CHART_COLORS = [GOLD, BLUE, GREEN, '#A855F7', RED, '#FF8C00', '#0F6E56'];
 
-// ─── MOCK DDD (substituir quando Tintim estiver integrado) ───────────────────
-export const DDD_MOCK = [
-  { ddd: '62', estado: 'GO', count: 34 },
-  { ddd: '61', estado: 'DF', count: 18 },
-  { ddd: '11', estado: 'SP', count: 12 },
-  { ddd: '31', estado: 'MG', count: 9  },
-  { ddd: '21', estado: 'RJ', count: 7  },
-  { ddd: '71', estado: 'BA', count: 5  },
-  { ddd: '41', estado: 'PR', count: 4  },
-  { ddd: '85', estado: 'CE', count: 3  },
-];
+// ─── DDD → ESTADO ────────────────────────────────────────────────────────────
+export const DDD_ESTADO = {
+  '11':'SP','12':'SP','13':'SP','14':'SP','15':'SP','16':'SP','17':'SP','18':'SP','19':'SP',
+  '21':'RJ','22':'RJ','24':'RJ',
+  '27':'ES','28':'ES',
+  '31':'MG','32':'MG','33':'MG','34':'MG','35':'MG','37':'MG','38':'MG',
+  '41':'PR','42':'PR','43':'PR','44':'PR','45':'PR','46':'PR',
+  '47':'SC','48':'SC','49':'SC',
+  '51':'RS','53':'RS','54':'RS','55':'RS',
+  '61':'DF','62':'GO','63':'TO','64':'GO',
+  '65':'MT','66':'MT','67':'MS','68':'AC','69':'RO',
+  '71':'BA','73':'BA','74':'BA','75':'BA','77':'BA',
+  '79':'SE','81':'PE','82':'AL','83':'PB','84':'RN',
+  '85':'CE','86':'PI','87':'PE','88':'CE','89':'PI',
+  '91':'PA','92':'AM','93':'PA','94':'PA',
+  '95':'RR','96':'AP','97':'AM','98':'MA','99':'MA',
+};
+
+// ─── TINTIM — ORIGEM DOS LEADS POR DDD ───────────────────────────────────────
+const TINTIM_SHEET_ID = '16FeGzeoNUWjBt99Zyw9FgDkn8qzp3-JX5C7e3Yostro';
+
+function parseDateStr(str) {
+  if (!str) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+  const m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const d = new Date(str);
+  return isNaN(d) ? '' : d.toISOString().slice(0, 10);
+}
+
+function extractDDDStr(phone) {
+  if (!phone) return '';
+  let d = phone.replace(/\D/g, '');
+  if (d.startsWith('55') && d.length >= 12) d = d.slice(2);
+  if (d.startsWith('0')  && d.length >= 11) d = d.slice(1);
+  return d.length >= 10 ? d.slice(0, 2) : '';
+}
+
+export async function fetchTintimData() {
+  const url = `https://docs.google.com/spreadsheets/d/${TINTIM_SHEET_ID}/export?format=csv&gid=0`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Falha ao buscar dados do Tintim');
+  const text = await res.text();
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+
+  const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+  const fi = pats => headers.findIndex(h => pats.some(p => h.includes(p)));
+
+  const iNome   = fi(['nome', 'name']);
+  const iPhone  = fi(['telefone', 'phone', 'fone', 'celular', 'whatsapp']);
+  const iDDD    = headers.indexOf('ddd');
+  const iEstado = fi(['estado', 'state', 'uf']);
+  const iData   = headers.findIndex(h => /^data|^date|timestamp|criado|created/.test(h));
+
+  return lines.slice(1)
+    .map(line => {
+      const v      = parseCSVLine(line);
+      const nome   = iNome   >= 0 ? (v[iNome]   || '').trim() : '';
+      const phone  = iPhone  >= 0 ? (v[iPhone]  || '').trim() : '';
+      const ddd    = iDDD    >= 0 ? (v[iDDD]    || '').trim() : extractDDDStr(phone);
+      const estado = iEstado >= 0 ? (v[iEstado] || '').trim() : (DDD_ESTADO[ddd] || '');
+      const day    = parseDateStr(iData >= 0 ? (v[iData] || '') : '');
+      return { nome, phone, ddd, estado, day };
+    })
+    .filter(r => r.nome.length > 0);
+}
+
+// ─── MOCK DDD (mantido para compatibilidade) ──────────────────────────────────
+export const DDD_MOCK = [];
