@@ -35,6 +35,12 @@ export function getCustomField(lead, fieldId) {
   return field?.values?.[0]?.value || null;
 }
 
+// ─── ETAPAS DE GANHO POR NOME ────────────────────────────────────────────────
+// Etapas que representam conversão mesmo sem type=1 no Kommo
+function isWonStageName(name) {
+  return /agendado|agendamento feito|venda ganha|consulta realizada|closed\s*won/i.test(name);
+}
+
 // ─── CAMPO IDs — WEBINÁRIO ───────────────────────────────────────────────────
 export const FIELD_QUALIFICACAO   = 1024299;
 export const FIELD_O_QUE_INCOMODA = 1024301;
@@ -82,7 +88,7 @@ export function useLeadsByStage(dateFrom, dateTo) {
                 pipeline_id:  pipe.id,
                 sort:         status.sort || 0,
                 type:         status.type,  // 0=normal, 1=ganho/final
-                isConversion: /thaiza/i.test(pipe.name) && /agendado/i.test(status.name),
+                isConversion: isWonStageName(status.name),
                 count: 0,
                 value: 0,
               };
@@ -141,10 +147,8 @@ export function useKommoSummary(dateFrom, dateTo) {
         const lostIds = new Set();
         allPipelines.forEach(pipe => {
           (pipe._embedded?.statuses || []).forEach(s => {
-            if (s.type === 1) wonIds.add(s.id);   // etapa de ganho
-            if (s.type === 2) lostIds.add(s.id);  // etapa de perda
-            // "Agendado" no pipeline Thaiza = conversão (sinal pago + consulta marcada)
-            if (/thaiza/i.test(pipe.name) && /agendado/i.test(s.name)) wonIds.add(s.id);
+            if (s.type === 1 || isWonStageName(s.name)) wonIds.add(s.id);
+            if (s.type === 2) lostIds.add(s.id);
           });
         });
 
