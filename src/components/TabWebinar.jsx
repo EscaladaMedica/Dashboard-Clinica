@@ -200,14 +200,14 @@ export default function TabWebinar({ startDate, endDate, dateFrom, dateTo }) {
     const map = {};
     trafico.forEach(d => {
       const key = `${d.cj}||${d.ad}`;
-      if (!map[key]) map[key] = { cj: d.cj, ad: d.ad, spent: 0, lpv: 0 };
+      if (!map[key]) map[key] = { camp: d.camp, cj: d.cj, ad: d.ad, spent: 0, lpv: 0, forms: 0 };
       map[key].spent += d.spent;
       map[key].lpv   += d.lpv;
+      map[key].forms += d.forms;
     });
-    return Object.values(map).sort((a, b) => b.lpv - a.lpv || b.spent - a.spent);
+    return Object.values(map).sort((a, b) => b.spent - a.spent);
   }, [trafico]);
 
-  const maxLpv = Math.max(...grouped.map(r => r.lpv), 1);
   const traficoPageData = grouped.slice((traficoPage - 1) * PER_PAGE, traficoPage * PER_PAGE);
 
   // ── Métricas de qualificação ──
@@ -239,16 +239,23 @@ export default function TabWebinar({ startDate, endDate, dateFrom, dateTo }) {
       .sort((a, b) => Number(a[0].replace('Escala ', '')) - Number(b[0].replace('Escala ', '')))
       .map(([name, value]) => ({ name, value }));
 
-    // Ads que trouxeram leads qualificados
+    // Criativos que trouxeram leads qualificados
+    // Fonte: campo utm_content (criativo) ou utm_campaign (campanha) registrado no Kommo no momento do cadastro.
+    // Leads sem UTM configurado na URL do anúncio aparecem como não atribuídos.
     const adsMap = {};
+    let semAtribuicao = 0;
     kommoLeads.filter(isQualificado).forEach(l => {
-      const ad = l.utm_content || l.utm_campaign || 'Não rastreado';
-      adsMap[ad] = (adsMap[ad] || 0) + 1;
+      const key = l.utm_content || l.utm_campaign;
+      if (key) {
+        adsMap[key] = (adsMap[key] || 0) + 1;
+      } else {
+        semAtribuicao++;
+      }
     });
     const adsQualificados = Object.entries(adsMap)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
-      .map(([name, count]) => ({ name: name.length > 30 ? name.slice(0,30)+'…' : name, count }));
+      .map(([name, count]) => ({ name: name.length > 35 ? name.slice(0,35)+'…' : name, count }));
     const incomodoMap = {};
     kommoLeads.forEach(l => {
       if (l.o_que_incomoda) {
@@ -271,7 +278,7 @@ export default function TabWebinar({ startDate, endDate, dateFrom, dateTo }) {
       .slice(0, 15)
       .map(([ddd, count]) => ({ ddd, count, estado: DDD_ESTADO[ddd] || '?' }));
 
-    return { total, qualificados, desqualif, cpl, rendaData, escalaData, topIncomodos, adsQualificados, dddData };
+    return { total, qualificados, desqualif, cpl, rendaData, escalaData, topIncomodos, adsQualificados, semAtribuicao, dddData };
   }, [kommoLeads, totalSpent]);
 
   // Filtro de qualificação na tabela
@@ -409,9 +416,21 @@ export default function TabWebinar({ startDate, endDate, dateFrom, dateTo }) {
             </div>
           )}
 
-          {qualStats.adsQualificados.length > 0 && (
+          {(qualStats.adsQualificados.length > 0 || qualStats.semAtribuicao > 0) && (
             <div className="chart-card" style={{ marginBottom: 24 }}>
-              <div className="chart-title">Criativos que trouxeram leads qualificados</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div className="chart-title" style={{ margin: 0 }}>Criativos que trouxeram leads qualificados</div>
+                {qualStats.semAtribuicao > 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                    + {qualStats.semAtribuicao} sem UTM rastreado
+                  </span>
+                )}
+              </div>
+              {qualStats.adsQualificados.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 0' }}>
+                  Nenhum lead qualificado com UTM configurado. Configure <code>utm_content</code> ou <code>utm_campaign</code> nas URLs dos anúncios para ver a atribuição por criativo.
+                </div>
+              )}
               {qualStats.adsQualificados.map((item, i) => {
                 const maxCount = qualStats.adsQualificados[0].count;
                 const pct = (item.count / maxCount) * 100;
@@ -543,28 +562,31 @@ export default function TabWebinar({ startDate, endDate, dateFrom, dateTo }) {
               <table>
                 <thead>
                   <tr>
+                    <th>Campanha</th>
                     <th>Conjunto</th>
                     <th>Criativo</th>
                     <th style={{ textAlign: 'right' }}>Gasto</th>
-                    <th style={{ textAlign: 'right' }}>Leads</th>
+                    <th style={{ textAlign: 'right' }}>Views LP</th>
+                    <th style={{ textAlign: 'right' }}>Cadastros</th>
                     <th style={{ textAlign: 'right' }}>CPL</th>
-                    <th>Eficiência</th>
                   </tr>
                 </thead>
                 <tbody>
                   {traficoPageData.map((r, i) => {
-                    const cplRow   = r.lpv > 0 ? r.spent / r.lpv : null;
-                    const eff      = r.lpv / maxLpv;
-                    const effClass = eff > 0.6 ? 'badge-green' : eff > 0.2 ? 'badge-amber' : 'badge-red';
-                    const effLabel = eff > 0.6 ? 'alto' : eff > 0.2 ? 'médio' : 'baixo';
+                    // CPL pelo número de cadastros (forms); se zero, usa views LP como fallback
+                    const leadsRef = r.forms > 0 ? r.forms : r.lpv;
+                    const cplRow   = leadsRef > 0 ? r.spent / leadsRef : null;
                     return (
                       <tr key={i}>
-                        <td className="td-muted" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.cj}</td>
+                        <td className="td-muted" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 10 }}>{r.camp}</td>
+                        <td className="td-muted" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.cj}</td>
                         <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.ad}</td>
                         <td className="td-num">{fmt(r.spent)}</td>
-                        <td className="td-num">{r.lpv}</td>
+                        <td className="td-num" style={{ color: 'var(--text-3)' }}>{r.lpv}</td>
+                        <td className="td-num" style={{ color: r.forms > 0 ? 'var(--safe)' : 'var(--text-3)' }}>
+                          {r.forms > 0 ? r.forms : '—'}
+                        </td>
                         <td className="td-num">{cplRow ? fmt(cplRow) : '—'}</td>
-                        <td><span className={`badge ${effClass}`}>{effLabel}</span></td>
                       </tr>
                     );
                   })}
