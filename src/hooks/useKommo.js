@@ -216,27 +216,28 @@ export function useWebinarLeads(dateFrom, dateTo) {
         // Coleta IDs únicos de contatos vinculados aos leads
         const contactIds = [...new Set(
           items.flatMap(lead => (lead._embedded?.contacts || []).map(c => c.id))
-        )].slice(0, 100);
+        )];
 
-        // Busca contatos em lote para obter telefones (e assim DDD)
-        // Usa URLSearchParams.append para gerar filter[id][]= repetido (formato aceito pelo Kommo)
+        // Busca contatos em lotes para obter telefones (e assim DDD).
+        // Usa chaves indexadas (filter[id][0]=X) porque o proxy converte a query em objeto
+        // e chaves repetidas (filter[id][]=X) perdem todos os valores exceto o último.
         const contactPhones = {};
         if (contactIds.length > 0) {
-          try {
-            const contactQs = new URLSearchParams({ endpoint: 'contacts', limit: 250 });
-            contactIds.forEach(id => contactQs.append('filter[id][]', id));
-            const cRes = await fetch(`/api/kommo?${contactQs.toString()}`);
-            if (cRes.ok) {
-              const contactData = await cRes.json();
+          const BATCH = 100;
+          for (let b = 0; b < contactIds.length; b += BATCH) {
+            try {
+              const batch = contactIds.slice(b, b + BATCH);
+              const batchParams = { limit: BATCH };
+              batch.forEach((id, j) => { batchParams[`filter[id][${j}]`] = id; });
+              const contactData = await fetchKommo('contacts', batchParams);
               (contactData?._embedded?.contacts || []).forEach(contact => {
-                // Tenta field_code PHONE primeiro, depois qualquer campo multitext (telefone)
                 const phoneField = (contact.custom_fields_values || [])
                   .find(f => f.field_code === 'PHONE' || f.field_type === 'multitext');
                 const phone = phoneField?.values?.[0]?.value;
                 if (phone) contactPhones[contact.id] = phone;
               });
-            }
-          } catch (_) { /* DDD indisponível, não bloqueia */ }
+            } catch (_) { /* lote falhou, continua */ }
+          }
         }
 
         const parsed = items.map(lead => {
