@@ -59,27 +59,33 @@ export function useLeadsByStage(dateFrom, dateTo) {
       setLoading(true);
       setError(null);
       try {
-        const pipelines = await fetchKommo('leads/pipelines', { limit: 50 });
-        const allPipelines = pipelines?._embedded?.pipelines || [];
+        const pipelinesData = await fetchKommo('leads/pipelines', { limit: 50 });
+        const allPipelines  = pipelinesData?._embedded?.pipelines || [];
 
-        const params = { limit: 250 };
+        const params = {};
         if (dateFrom) params['filter[created_at][from]'] = dateFrom;
         if (dateTo)   params['filter[created_at][to]']   = dateTo;
 
-        const leadsData = await fetchKommo('leads', params);
-        const leads     = leadsData?._embedded?.leads || [];
+        // Busca TODOS os leads do período (paginado)
+        const leads = await fetchAllPages('leads', params);
 
+        // Monta mapa de etapas incluindo ganho/perdido (type 1 = final)
         const stageMap = {};
         allPipelines.forEach(pipe => {
-          (pipe._embedded?.statuses || []).forEach(status => {
-            if (status.type !== 1) {
+          (pipe._embedded?.statuses || [])
+            .sort((a, b) => (a.sort || 0) - (b.sort || 0))
+            .forEach(status => {
               stageMap[`${pipe.id}_${status.id}`] = {
-                id: status.id, name: status.name,
-                pipeline: pipe.name, pipeline_id: pipe.id,
-                count: 0, value: 0,
+                id:          status.id,
+                name:        status.name,
+                pipeline:    pipe.name,
+                pipeline_id: pipe.id,
+                sort:        status.sort || 0,
+                type:        status.type,  // 0=normal, 1=ganho/final
+                count: 0,
+                value: 0,
               };
-            }
-          });
+            });
         });
 
         leads.forEach(lead => {
@@ -90,7 +96,13 @@ export function useLeadsByStage(dateFrom, dateTo) {
           }
         });
 
-        if (!cancelled) setStages(Object.values(stageMap));
+        const stagesArr = Object.values(stageMap)
+          .sort((a, b) => {
+            if (a.pipeline_id !== b.pipeline_id) return a.pipeline_id - b.pipeline_id;
+            return (a.sort || 0) - (b.sort || 0);
+          });
+
+        if (!cancelled) setStages(stagesArr);
       } catch (e) {
         if (!cancelled) setError(e.message);
       } finally {
@@ -121,18 +133,28 @@ export function useKommoSummary(dateFrom, dateTo) {
       setTalksLimited(false);
 
       try {
-        const leadParams = { limit: 250 };
+        // Busca pipelines para identificar etapas de ganho (type=1) por ID real
+        const pipelinesData = await fetchKommo('leads/pipelines', { limit: 50 });
+        const allPipelines  = pipelinesData?._embedded?.pipelines || [];
+        const wonIds  = new Set();
+        const lostIds = new Set();
+        allPipelines.forEach(pipe => {
+          (pipe._embedded?.statuses || []).forEach(s => {
+            if (s.type === 1) wonIds.add(s.id);   // etapa de ganho
+            if (s.type === 2) lostIds.add(s.id);  // etapa de perda
+          });
+        });
+
+        const leadParams = {};
         if (dateFrom) leadParams['filter[created_at][from]'] = dateFrom;
         if (dateTo)   leadParams['filter[created_at][to]']   = dateTo;
 
-        // Busca leads com filtro de data
-        const leadsData = await fetchKommo('leads', leadParams);
-        const leads     = leadsData?._embedded?.leads || [];
+        // Busca TODOS os leads do período (paginado)
+        const leads = await fetchAllPages('leads', leadParams);
 
-        // Status 142 = ganho, 143 = perdido (padrão Kommo)
-        const won    = leads.filter(l => l.status_id === 142);
-        const lost   = leads.filter(l => l.status_id === 143);
-        const active = leads.filter(l => l.status_id !== 142 && l.status_id !== 143);
+        const won    = leads.filter(l => wonIds.has(l.status_id));
+        const lost   = leads.filter(l => lostIds.has(l.status_id));
+        const active = leads.filter(l => !wonIds.has(l.status_id) && !lostIds.has(l.status_id));
 
         // Talks — sem filtro de data (limitação da API)
         let talksTotal = 0, talksInWork = 0, talksUnread = 0;
@@ -143,7 +165,7 @@ export function useKommoSummary(dateFrom, dateTo) {
           });
           talksTotal  = talks.length;
           talksInWork = talks.filter(t => t.is_in_work).length;
-          talksUnread = talks.filter(t => !t.is_read).length;
+          talksUnread = talks.filter(t => (t.unread_count || 0) > 0).length;
           setTalksLimited(true); // talks sempre sem filtro de data
         } catch (e) {
           talksErr = e.message;
