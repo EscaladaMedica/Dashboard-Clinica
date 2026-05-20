@@ -157,8 +157,13 @@ export default function TabClinica({ startDate, endDate }) {
   const campPie = useMemo(() => {
     const map = {};
     data.forEach(d => {
-      const k = d.camp.split(' - ')[0].slice(0, 30);
-      map[k] = (map[k] || 0) + d.msg;
+      const n = d.camp.toLowerCase();
+      const label = n.includes('lead')
+        ? 'Campanha de Lead'
+        : (n.includes('tráfego') || n.includes('trafego'))
+          ? 'Distribuição de Conteúdo'
+          : d.camp.split(' - ')[0].slice(0, 30);
+      map[label] = (map[label] || 0) + d.msg;
     });
     return Object.entries(map)
       .filter(([, v]) => v > 0)
